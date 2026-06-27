@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EF Workout Logger V9</title>
+<title>EF Workout Logger V10</title>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -32,43 +32,7 @@
     font-size: 15px;
   }
   
-  /* Custom Autocomplete Styles */
-  .autocomplete {
-    position: relative;
-    display: inline-block;
-    width: 100%;
-  }
-  .autocomplete-items {
-    position: absolute;
-    border: 1px solid #ccd0d5;
-    border-top: none;
-    z-index: 99;
-    top: 100%;
-    left: 0;
-    right: 0;
-    max-height: 250px;
-    overflow-y: auto;
-    background-color: #fff;
-    border-radius: 0 0 8px 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    display: none;
-  }
-  .autocomplete-items div {
-    padding: 16px;
-    cursor: pointer;
-    border-bottom: 1px solid #eee;
-    font-size: 16px;
-    font-weight: 500;
-  }
-  .autocomplete-items div:last-child {
-    border-bottom: none;
-  }
-  .autocomplete-items div:active {
-    background-color: #e9e9e9;
-  }
-
-  input[type="text"],
-  input[type="number"] {
+  input[type="text"] {
     width: 100%;
     padding: 14px;
     border: 1px solid #ccd0d5;
@@ -77,6 +41,35 @@
     font-size: 16px;
     background-color: #f5f6f7;
   }
+
+  /* Chip UI Styles */
+  .chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+    max-height: 140px;
+    overflow-y: auto;
+    padding: 4px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    background: #fafafa;
+  }
+  .chip {
+    background-color: #e4e6eb;
+    border: none;
+    border-radius: 16px;
+    padding: 8px 14px;
+    font-size: 14px;
+    color: #1c1e21;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .chip:active {
+    background-color: #ccd0d5;
+    transform: scale(0.95);
+  }
+
   select.unit-toggle {
     padding: 4px 8px;
     margin-left: 8px;
@@ -93,7 +86,7 @@
   .col {
     flex: 1;
   }
-  button {
+  button.action-btn {
     width: 100%;
     padding: 16px;
     background-color: #1877f2;
@@ -106,7 +99,7 @@
     cursor: pointer;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
-  button:active {
+  button.action-btn:active {
     background-color: #166fe5;
     transform: scale(0.98);
   }
@@ -144,15 +137,14 @@
 
 <div class="card">
   <label for="exerciseInput">Exercise</label>
-  <div class="autocomplete">
-    <input type="text" id="exerciseInput" placeholder="Search or type new exercise..." autocomplete="off">
-    <div id="autocomplete-list" class="autocomplete-items"></div>
-  </div>
+  <input type="text" id="exerciseInput" placeholder="Tap a button below or type a new one...">
+  
+  <div id="chipContainer" class="chip-container"></div>
 
   <div class="row">
     <div class="col">
       <label for="reps">Reps</label>
-      <input type="number" id="reps" placeholder="e.g. 8" inputmode="numeric">
+      <input type="text" id="reps" placeholder="e.g. 8" inputmode="numeric">
     </div>
     <div class="col">
       <label for="weight">
@@ -162,19 +154,19 @@
           <option value="lbs">lbs</option>
         </select>
       </label>
-      <input type="number" id="weight" placeholder="e.g. 20" inputmode="decimal">
+      <input type="text" id="weight" placeholder="e.g. 20" inputmode="decimal">
     </div>
   </div>
 
-  <button onclick="addSet()">Add Set to Log</button>
+  <button class="action-btn" onclick="addSet()">Add Set to Log</button>
 </div>
 
 <div class="card">
   <label for="outputLog">Forum Text Output</label>
   <textarea id="outputLog" placeholder="Your formatted log will appear here..."></textarea>
   
-  <button class="btn-copy" onclick="copyLog()">Copy to Clipboard</button>
-  <button class="secondary" onclick="clearLog()">Clear Log (Start New Day)</button>
+  <button class="action-btn btn-copy" onclick="copyLog()">Copy to Clipboard</button>
+  <button class="action-btn secondary" onclick="clearLog()">Clear Log (Start New Day)</button>
 </div>
 
 <script>
@@ -199,22 +191,18 @@
     "Triceps cable pull downs", "V Squat", "Walking Lunges"
   ];
 
-  // Crash-proof memory loading
   let savedExercises = [];
   try {
-    const stored = localStorage.getItem('ef_exercises');
+    const stored = localStorage.getItem('ef_exercises_v2');
     if (stored) {
       savedExercises = JSON.parse(stored);
-      if (!Array.isArray(savedExercises)) throw new Error("Not an array");
     } else {
       savedExercises = [...defaultExercises];
     }
   } catch (e) {
-    console.error("Memory reset due to data error");
     savedExercises = [...defaultExercises];
   }
 
-  // Unit loading
   try {
     document.getElementById('unitToggle').value = localStorage.getItem('ef_unit') || 'kg';
   } catch (e) {}
@@ -226,95 +214,66 @@
     } catch (e) {}
   }
 
-  // Smart Search Logic
-  const exInput = document.getElementById('exerciseInput');
-  const autocompleteList = document.getElementById('autocomplete-list');
-
-  function renderList(filterText = '') {
-    autocompleteList.innerHTML = '';
-    const safeFilter = filterText.toLowerCase().trim();
+  // Render the chips (buttons)
+  function renderChips() {
+    const container = document.getElementById('chipContainer');
+    container.innerHTML = '';
     
-    // Show all if empty, otherwise filter
-    const filtered = safeFilter === '' 
-      ? savedExercises 
-      : savedExercises.filter(ex => ex.toLowerCase().includes(safeFilter));
-    
-    filtered.forEach(ex => {
-      const item = document.createElement('div');
-      item.textContent = ex; // Safe plain text insertion
-      
-      // Use mousedown to prevent mobile blur hiding the list before click fires
-      item.addEventListener('mousedown', function(e) {
-        e.preventDefault(); 
-        exInput.value = ex;
-        autocompleteList.style.display = 'none';
-        setExercise();
-      });
-      
-      // Also add touchstart for extra mobile responsiveness
-      item.addEventListener('touchstart', function(e) {
-        e.preventDefault(); 
-        exInput.value = ex;
-        autocompleteList.style.display = 'none';
-        setExercise();
-      }, {passive: false});
-
-      autocompleteList.appendChild(item);
+    savedExercises.forEach(ex => {
+      const btn = document.createElement('button');
+      btn.className = 'chip';
+      btn.innerText = ex;
+      // When a chip is tapped, it fills the text box
+      btn.onclick = function() {
+        document.getElementById('exerciseInput').value = ex;
+      };
+      container.appendChild(btn);
     });
-
-    if (filtered.length > 0) {
-      autocompleteList.style.display = 'block';
-    } else {
-      autocompleteList.style.display = 'none';
-    }
   }
 
-  exInput.addEventListener('focus', () => renderList(exInput.value));
-  exInput.addEventListener('input', () => renderList(exInput.value));
-
-  // Hide the list if tapped outside
-  document.addEventListener('click', function(e) {
-    if (e.target !== exInput && e.target !== autocompleteList) {
-      autocompleteList.style.display = 'none';
-    }
-  });
+  // Initial load
+  renderChips();
 
   function saveNewExercise(exerciseName) {
     if (!savedExercises.includes(exerciseName)) {
       savedExercises.push(exerciseName);
       savedExercises.sort();
       try {
-        localStorage.setItem('ef_exercises', JSON.stringify(savedExercises));
+        localStorage.setItem('ef_exercises_v2', JSON.stringify(savedExercises));
       } catch(e) {}
+      renderChips(); // Update the list of buttons instantly
     }
   }
 
-  function setExercise() {
-    const exerciseInputValue = exInput.value.trim();
-    if (exerciseInputValue !== currentExercise && exerciseInputValue !== '') {
+  function addSet() {
+    const exerciseInputEl = document.getElementById('exerciseInput');
+    const repsInputEl = document.getElementById('reps');
+    const weightInputEl = document.getElementById('weight');
+    
+    const exerciseInputValue = exerciseInputEl.value.trim();
+    // Replace commas with dots in case the mobile keyboard uses commas for decimals
+    const reps = repsInputEl.value.trim();
+    const weightStr = weightInputEl.value.trim().replace(',', '.');
+    const currentUnit = document.getElementById('unitToggle').value;
+
+    if (exerciseInputValue === '') {
+      alert('Please select or type an exercise.');
+      return;
+    }
+    if (reps === '' || weightStr === '') {
+      alert('Please enter both reps and weight.');
+      return;
+    }
+
+    // Check if we changed exercises
+    if (exerciseInputValue !== currentExercise) {
       currentExercise = exerciseInputValue;
       exerciseLogged = false; 
       lastWeight = null;
       weightDelta = 0;
     }
-  }
 
-  function addSet() {
-    const exerciseInputValue = exInput.value.trim();
-    const reps = document.getElementById('reps').value;
-    const weightStr = document.getElementById('weight').value;
-    const currentUnit = document.getElementById('unitToggle').value;
-
-    if (!exerciseInputValue) {
-      alert('Please select or type an exercise.');
-      return;
-    }
-    if (!reps || !weightStr) {
-      alert('Please enter both reps and weight.');
-      return;
-    }
-
-    setExercise();
+    // Save it if it's a new exercise you typed manually
     saveNewExercise(currentExercise);
 
     const outputLog = document.getElementById('outputLog');
@@ -323,4 +282,75 @@
       if (logContent !== '') {
         logContent += '\n\n'; 
       }
-      logContent += currentExercise + ':\
+      logContent += currentExercise + ':\n';
+      exerciseLogged = true;
+    }
+
+    // Append the set
+    logContent += `${reps} X ${weightStr} ${currentUnit}\n`;
+    
+    outputLog.value = logContent;
+    outputLog.scrollTop = outputLog.scrollHeight;
+
+    // Math Prediction Logic
+    const currentWeightNum = parseFloat(weightStr);
+    
+    // Only predict if it's a valid number
+    if (!isNaN(currentWeightNum)) {
+      if (lastWeight !== null) {
+        weightDelta = currentWeightNum - lastWeight;
+      }
+      lastWeight = currentWeightNum;
+      
+      let nextWeight = lastWeight + weightDelta;
+      nextWeight = Math.round(nextWeight * 100) / 100;
+
+      weightInputEl.value = nextWeight;
+    } else {
+      weightInputEl.value = '';
+    }
+    
+    // Select the weight box for the next set
+    weightInputEl.focus();
+    weightInputEl.select();
+  }
+
+  function copyLog() {
+    const outputLog = document.getElementById('outputLog');
+    if (!outputLog.value) {
+      alert('Log is empty!');
+      return;
+    }
+    outputLog.select();
+    outputLog.setSelectionRange(0, 99999); 
+    
+    try {
+      navigator.clipboard.writeText(outputLog.value).then(() => {
+          alert('Log copied! Ready to paste into EliteFitness.');
+      }).catch(() => {
+          document.execCommand("copy");
+          alert('Log copied! Ready to paste into EliteFitness.');
+      });
+    } catch(e) {
+      document.execCommand("copy");
+      alert('Log copied! Ready to paste into EliteFitness.');
+    }
+  }
+
+  function clearLog() {
+    if (confirm('Are you sure you want to clear the entire log?')) {
+      logContent = '';
+      document.getElementById('outputLog').value = '';
+      document.getElementById('exerciseInput').value = '';
+      document.getElementById('reps').value = '';
+      document.getElementById('weight').value = '';
+      currentExercise = '';
+      exerciseLogged = false;
+      lastWeight = null;
+      weightDelta = 0;
+    }
+  }
+</script>
+
+</body>
+</html>
