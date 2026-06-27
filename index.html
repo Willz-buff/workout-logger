@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>EF Workout Logger V8</title>
+<title>EF Workout Logger V9</title>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -46,7 +46,7 @@
     top: 100%;
     left: 0;
     right: 0;
-    max-height: 220px;
+    max-height: 250px;
     overflow-y: auto;
     background-color: #fff;
     border-radius: 0 0 8px 8px;
@@ -54,10 +54,11 @@
     display: none;
   }
   .autocomplete-items div {
-    padding: 14px;
+    padding: 16px;
     cursor: pointer;
     border-bottom: 1px solid #eee;
     font-size: 16px;
+    font-weight: 500;
   }
   .autocomplete-items div:last-child {
     border-bottom: none;
@@ -185,25 +186,44 @@
   let weightDelta = 0;
 
   const defaultExercises = [
-    "Sitted biceps curl with ez bar", "Bicep curl cable machine EZ bar", "Hammer Curls",
-    "Tricep extension machine", "Triceps cable pull downs", "Tricep pull ups", 
-    "Overhead cable extensions", "Skull Crushers",
-    "Standing shoulder dumbbell flys", "Standing Dumbbell Lateral Raises", 
-    "High-incline shoulder press", "Seated Dumbbell Shoulder Press", "Rear deltoid fly", "Face Pulls",
-    "Decline bench pec dumbbell flys", "Decline Dumbbell Bench Press", 
-    "Incline Dumbbell Bench Press", "Flat Barbell Bench Press", "Cable Crossovers", "Pec Deck Machine",
-    "Lat Pulldown", "Seated Cable Row", "Barbell Bent Over Row", "Single Arm Dumbbell Row", "Pull-ups",
-    "Leg extension", "Sitting calves", "Standing Calf Raises", "Seated leg curl", 
-    "Seated leg press", "V Squat", "Hack Squat", "Romanian Deadlift (RDL)", "Walking Lunges",
-    "Ab machine", "Russian twists with cable", "Hanging Leg Raises", "Cable Crunches"
+    "Ab machine", "Barbell Bent Over Row", "Bicep curl cable machine EZ bar", "Cable Crossovers", 
+    "Cable Crunches", "Decline bench pec dumbbell flys", "Decline Dumbbell Bench Press", 
+    "Face Pulls", "Flat Barbell Bench Press", "Hack Squat", "Hammer Curls", "Hanging Leg Raises", 
+    "High-incline shoulder press", "Incline Dumbbell Bench Press", "Lat Pulldown", "Leg extension", 
+    "Overhead cable extensions", "Pec Deck Machine", "Pull-ups", "Rear deltoid fly", 
+    "Romanian Deadlift (RDL)", "Russian twists with cable", "Seated Cable Row", 
+    "Seated Dumbbell Shoulder Press", "Seated leg curl", "Seated leg press", 
+    "Single Arm Dumbbell Row", "Sitted biceps curl with ez bar", "Sitting calves", 
+    "Skull Crushers", "Standing Calf Raises", "Standing Dumbbell Lateral Raises", 
+    "Standing shoulder dumbbell flys", "Tricep extension machine", "Tricep pull ups", 
+    "Triceps cable pull downs", "V Squat", "Walking Lunges"
   ];
 
-  let savedExercises = JSON.parse(localStorage.getItem('ef_exercises')) || defaultExercises;
-  document.getElementById('unitToggle').value = localStorage.getItem('ef_unit') || 'kg';
+  // Crash-proof memory loading
+  let savedExercises = [];
+  try {
+    const stored = localStorage.getItem('ef_exercises');
+    if (stored) {
+      savedExercises = JSON.parse(stored);
+      if (!Array.isArray(savedExercises)) throw new Error("Not an array");
+    } else {
+      savedExercises = [...defaultExercises];
+    }
+  } catch (e) {
+    console.error("Memory reset due to data error");
+    savedExercises = [...defaultExercises];
+  }
+
+  // Unit loading
+  try {
+    document.getElementById('unitToggle').value = localStorage.getItem('ef_unit') || 'kg';
+  } catch (e) {}
 
   function saveUnitPreference() {
-    const selectedUnit = document.getElementById('unitToggle').value;
-    localStorage.setItem('ef_unit', selectedUnit);
+    try {
+      const selectedUnit = document.getElementById('unitToggle').value;
+      localStorage.setItem('ef_unit', selectedUnit);
+    } catch (e) {}
   }
 
   // Smart Search Logic
@@ -212,19 +232,33 @@
 
   function renderList(filterText = '') {
     autocompleteList.innerHTML = '';
-    const filtered = savedExercises.filter(ex => ex.toLowerCase().includes(filterText.toLowerCase()));
+    const safeFilter = filterText.toLowerCase().trim();
+    
+    // Show all if empty, otherwise filter
+    const filtered = safeFilter === '' 
+      ? savedExercises 
+      : savedExercises.filter(ex => ex.toLowerCase().includes(safeFilter));
     
     filtered.forEach(ex => {
       const item = document.createElement('div');
-      // Highlight matching text (optional, but looks nice)
-      const regex = new RegExp(`(${filterText})`, "gi");
-      item.innerHTML = ex.replace(regex, "<strong>$1</strong>");
+      item.textContent = ex; // Safe plain text insertion
       
-      item.addEventListener('click', function() {
+      // Use mousedown to prevent mobile blur hiding the list before click fires
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault(); 
         exInput.value = ex;
         autocompleteList.style.display = 'none';
         setExercise();
       });
+      
+      // Also add touchstart for extra mobile responsiveness
+      item.addEventListener('touchstart', function(e) {
+        e.preventDefault(); 
+        exInput.value = ex;
+        autocompleteList.style.display = 'none';
+        setExercise();
+      }, {passive: false});
+
       autocompleteList.appendChild(item);
     });
 
@@ -238,7 +272,7 @@
   exInput.addEventListener('focus', () => renderList(exInput.value));
   exInput.addEventListener('input', () => renderList(exInput.value));
 
-  // Hide the list if you tap anywhere else on the screen
+  // Hide the list if tapped outside
   document.addEventListener('click', function(e) {
     if (e.target !== exInput && e.target !== autocompleteList) {
       autocompleteList.style.display = 'none';
@@ -249,7 +283,9 @@
     if (!savedExercises.includes(exerciseName)) {
       savedExercises.push(exerciseName);
       savedExercises.sort();
-      localStorage.setItem('ef_exercises', JSON.stringify(savedExercises));
+      try {
+        localStorage.setItem('ef_exercises', JSON.stringify(savedExercises));
+      } catch(e) {}
     }
   }
 
@@ -287,27 +323,4 @@
       if (logContent !== '') {
         logContent += '\n\n'; 
       }
-      logContent += currentExercise + ':\n';
-      exerciseLogged = true;
-    }
-
-    // Append the set
-    logContent += `${reps} X ${weightStr} ${currentUnit}\n`;
-    
-    outputLog.value = logContent;
-    outputLog.scrollTop = outputLog.scrollHeight;
-
-    // Math Prediction Logic
-    const currentWeightNum = parseFloat(weightStr);
-    
-    if (lastWeight !== null) {
-      weightDelta = currentWeightNum - lastWeight;
-    }
-    lastWeight = currentWeightNum;
-    
-    let nextWeight = lastWeight + weightDelta;
-    nextWeight = Math.round(nextWeight * 100) / 100;
-
-    const weightInput = document.getElementById('weight');
-    weightInput.value = nextWeight;
-    weightInput.select();
+      logContent += currentExercise + ':\
