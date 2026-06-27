@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>EF Workout Logger V4</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    margin: 0;
+    padding: 16px;
+    background-color: #f0f2f5;
+    color: #1c1e21;
+  }
+  h2 {
+    text-align: center;
+    color: #2c3e50;
+    margin-top: 5px;
+  }
+  .card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+  }
+  label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 8px;
+    margin-top: 12px;
+    font-size: 15px;
+  }
+  input[type="text"],
+  input[type="number"] {
+    width: 100%;
+    padding: 14px;
+    border: 1px solid #ccd0d5;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 16px;
+    background-color: #f5f6f7;
+  }
+  .row {
+    display: flex;
+    gap: 16px;
+  }
+  .col {
+    flex: 1;
+  }
+  button {
+    width: 100%;
+    padding: 16px;
+    background-color: #1877f2;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: bold;
+    margin-top: 20px;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  button:active {
+    background-color: #166fe5;
+    transform: scale(0.98);
+  }
+  button.secondary {
+    background-color: #e4e6eb;
+    color: #4b4f56;
+    margin-top: 12px;
+  }
+  button.secondary:active {
+    background-color: #d8dadf;
+  }
+  textarea {
+    width: 100%;
+    height: 250px;
+    padding: 12px;
+    border: 1px solid #ccd0d5;
+    border-radius: 8px;
+    box-sizing: border-box;
+    font-size: 15px;
+    font-family: monospace;
+    resize: none;
+    background-color: #f5f6f7;
+  }
+  .btn-copy {
+    background-color: #42b72a;
+  }
+  .btn-copy:active {
+    background-color: #36a420;
+  }
+</style>
+</head>
+<body>
+
+<h2>Workout Logger</h2>
+
+<div class="card">
+  <label for="exercise">Exercise</label>
+  <input type="text" id="exercise" list="exercise-list" placeholder="Select or type new exercise..." onchange="setExercise()">
+  
+  <datalist id="exercise-list">
+    </datalist>
+
+  <div class="row">
+    <div class="col">
+      <label for="reps">Reps</label>
+      <input type="number" id="reps" placeholder="e.g. 8" inputmode="numeric">
+    </div>
+    <div class="col">
+      <label for="weight">Weight (kg)</label>
+      <input type="number" id="weight" placeholder="e.g. 20" inputmode="decimal">
+    </div>
+  </div>
+
+  <button onclick="addSet()">Add Set to Log</button>
+</div>
+
+<div class="card">
+  <label for="outputLog">Forum Text Output</label>
+  <textarea id="outputLog" placeholder="Your formatted log will appear here..."></textarea>
+  
+  <button class="btn-copy" onclick="copyLog()">Copy to Clipboard</button>
+  <button class="secondary" onclick="clearLog()">Clear Log (Start New Day)</button>
+</div>
+
+<script>
+  let currentExercise = '';
+  let logContent = '';
+  let exerciseLogged = false;
+  
+  // Predictive weight variables
+  let lastWeight = null;
+  let weightDelta = 0;
+
+  // Default exercises from your log
+  const defaultExercises = [
+    "Sitted biceps curl with ez bar", "Bicep curl cable machine EZ bar", "Tricep extension machine", 
+    "Triceps cable pull downs", "Tricep pull ups", "Overhead cable extensions", 
+    "Standing shoulder dumbbell flys", "Standing Dumbbell Lateral Raises", "High-incline shoulder press", 
+    "Decline bench pec dumbbell flys", "Decline Dumbbell Bench Press", "Rear deltoid fly", 
+    "Leg extension", "Sitting calves", "Seated leg curl", "Seated leg press", "V Squat", 
+    "Ab machine", "Russian twists with cable"
+  ];
+
+  // Load saved exercises from memory, or use defaults if none exist
+  let savedExercises = JSON.parse(localStorage.getItem('ef_exercises')) || defaultExercises;
+
+  function loadDatalist() {
+    const datalist = document.getElementById('exercise-list');
+    datalist.innerHTML = '';
+    savedExercises.forEach(ex => {
+      const option = document.createElement('option');
+      option.value = ex;
+      datalist.appendChild(option);
+    });
+  }
+
+  loadDatalist();
+
+  function saveNewExercise(exerciseName) {
+    if (!savedExercises.includes(exerciseName)) {
+      savedExercises.push(exerciseName);
+      savedExercises.sort();
+      localStorage.setItem('ef_exercises', JSON.stringify(savedExercises));
+      loadDatalist(); 
+    }
+  }
+
+  function setExercise() {
+    const exerciseInput = document.getElementById('exercise').value.trim();
+    if (exerciseInput !== currentExercise) {
+      currentExercise = exerciseInput;
+      exerciseLogged = false; 
+      
+      // Reset predictive tracking when changing exercises
+      lastWeight = null;
+      weightDelta = 0;
+    }
+  }
+
+  function addSet() {
+    const exerciseInput = document.getElementById('exercise').value.trim();
+    const reps = document.getElementById('reps').value;
+    const weightStr = document.getElementById('weight').value;
+
+    if (!exerciseInput) {
+      alert('Please select or enter an exercise first.');
+      return;
+    }
+    if (!reps || !weightStr) {
+      alert('Please enter both reps and weight.');
+      return;
+    }
+
+    setExercise();
+    saveNewExercise(currentExercise);
+
+    const outputLog = document.getElementById('outputLog');
+    
+    if (!exerciseLogged) {
+      if (logContent !== '') {
+        logContent += '\n\n'; 
+      }
+      logContent += currentExercise + ':\n';
+      exerciseLogged = true;
+    }
+
+    logContent += `${reps} X ${weightStr}kg\n`;
+    
+    outputLog.value = logContent;
+    outputLog.scrollTop = outputLog.scrollHeight;
+
+    // Predictive Math Logic
+    const currentWeightNum = parseFloat(weightStr);
+    
+    if (lastWeight !== null) {
+      weightDelta = currentWeightNum - lastWeight;
+    }
+    lastWeight = currentWeightNum;
+    
+    // Calculate next weight and round to fix floating point math glitches (e.g. 12.5 + 2.5 = 15.00001)
+    let nextWeight = lastWeight + weightDelta;
+    nextWeight = Math.round(nextWeight * 100) / 100;
+
+    // Apply prediction
+    const weightInput = document.getElementById('weight');
+    weightInput.value = nextWeight;
+    
+    // Select the text so you can instantly overwrite it if the prediction is wrong
+    weightInput.select();
+  }
+
+  function copyLog() {
+    const outputLog = document.getElementById('outputLog');
+    if (!outputLog.value) {
+      alert('Log is empty!');
+      return;
+    }
+    outputLog.select();
+    outputLog.setSelectionRange(0, 99999); 
+    navigator.clipboard.writeText(outputLog.value).then(() => {
+        alert('Log copied! Ready to paste into EliteFitness.');
+    }).catch(() => {
+        document.execCommand("copy");
+        alert('Log copied! Ready to paste into EliteFitness.');
+    });
+  }
+
+  function clearLog() {
+    if (confirm('Are you sure you want to clear the entire log?')) {
+      logContent = '';
+      document.getElementById('outputLog').value = '';
+      document.getElementById('exercise').value = '';
+      document.getElementById('reps').value = '';
+      document.getElementById('weight').value = '';
+      currentExercise = '';
+      exerciseLogged = false;
+      lastWeight = null;
+      weightDelta = 0;
+    }
+  }
+</script>
+
+</body>
+</html>
